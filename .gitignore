@@ -1,0 +1,23 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+target/
+build/
+*.class
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# Logs
+*.log

@@ -1,0 +1,8 @@
+version: 1
+checkmarx:
+  scan:
+    configs:
+      sast:
+        languageMode: 'multi'
+        recommendedExclusions: 'false'
+        engineVerbose : 'true'
