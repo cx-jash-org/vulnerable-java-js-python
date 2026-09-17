@@ -35,9 +35,11 @@ def run_command():
 
 @app.route("/run")
 def run_subprocess():
-    # VULNERABLE: Command Injection via subprocess with shell=True
-    user_input = request.args.get("input")
-    output = subprocess.check_output("echo " + user_input, shell=True)
+    # FIXED: Pass user_input as a list argument with shell=False to prevent
+    # command injection. The user input is treated as a literal argument to
+    # the echo command and is never interpreted by the shell.
+    user_input = request.args.get("input", "")
+    output = subprocess.check_output(["echo", user_input], shell=False)
     return output.decode()
 
 
