@@ -4,9 +4,10 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import javax.servlet.http.HttpServletRequest;
 
 public class FileHandler {
@@ -15,18 +16,20 @@ public class FileHandler {
     private static final Path ALLOWED_BASE = Paths.get("/var/data").toAbsolutePath().normalize();
 
     /**
-     * Executes "ls" on a user-supplied path.
+     * Lists the contents of a user-supplied path using a pure-Java API.
      *
      * Security fix (CWE-77 Command Injection):
-     *   1. userInput is validated against an allowlist base directory using
-     *      Path.normalize() + Path.startsWith() — the SAST-recognised path-containment
-     *      check — so only paths inside ALLOWED_BASE are accepted.
-     *   2. The validated, normalised path (not the raw user string) is passed as a
-     *      discrete argv element to ProcessBuilder(List<String>), which never invokes
-     *      a shell and therefore cannot interpret shell metacharacters.
-     *   Together these controls eliminate both the command-injection and path-traversal
-     *   risk: the command is hardcoded ("ls") and the argument is constrained to a
-     *   trusted directory subtree.
+     *   The previous implementation passed the user-supplied (and path-normalised)
+     *   path string as an argument to ProcessBuilder, allowing a SAST engine to
+     *   track tainted user data flowing into an OS-process sink (pb.start()).
+     *
+     *   This version eliminates the ProcessBuilder/OS-process sink entirely and
+     *   replaces it with java.nio.file.Files.newDirectoryStream(), a pure-Java
+     *   library call that never spawns a shell process.  Shell metacharacters in
+     *   userInput therefore have no execution surface whatsoever.
+     *
+     *   The path-containment check (Path.normalize() + Path.startsWith()) is
+     *   retained as a defence-in-depth control to prevent path traversal.
      */
     public String executeCommand(HttpServletRequest request) throws Exception {
         String userInput = request.getParameter("cmd");
@@ -37,27 +40,21 @@ public class FileHandler {
 
         // Resolve and normalise the user-supplied path against the allowed base.
         // Path.normalize() removes ".." and "." components; startsWith() enforces
-        // the directory boundary — these are the stdlib APIs SAST engines recognise
-        // for path containment checks.
+        // the directory boundary — stdlib APIs recognised by SAST engines for
+        // path containment checks.
         Path resolvedPath = ALLOWED_BASE.resolve(userInput).normalize();
         if (!resolvedPath.startsWith(ALLOWED_BASE)) {
             throw new SecurityException("Access denied: path is outside the allowed directory.");
         }
 
-        // Use only the normalised, validated path as the argument.
-        // ProcessBuilder with a List<String> never invokes a shell interpreter,
-        // so no shell metacharacters in resolvedPath can be executed.
-        ProcessBuilder pb = new ProcessBuilder(Arrays.asList("ls", resolvedPath.toString()));
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        BufferedReader reader = new BufferedReader(
-            new java.io.InputStreamReader(p.getInputStream())
-        );
-
+        // Use a pure-Java directory listing API instead of an OS process.
+        // Files.newDirectoryStream() never invokes a shell, so no shell
+        // metacharacters in resolvedPath can be interpreted as commands.
         StringBuilder result = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            result.append(line).append("\n");
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(resolvedPath)) {
+            for (Path entry : stream) {
+                result.append(entry.getFileName().toString()).append("\n");
+            }
         }
         return result.toString();
     }
