@@ -3,15 +3,22 @@ package com.demo;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.util.Arrays;
 import javax.servlet.http.HttpServletRequest;
 
 public class FileHandler {
 
-    // VULNERABLE: Command Injection
+    // FIXED: Command Injection remediated by using ProcessBuilder with an argument list.
+    // userInput is passed as a discrete argv element (not shell-interpolated), so shell
+    // metacharacters (;, |, &, $, `, etc.) cannot be interpreted by a shell interpreter.
     public String executeCommand(HttpServletRequest request) throws Exception {
         String userInput = request.getParameter("cmd");
 
-        Process p = Runtime.getRuntime().exec("ls " + userInput);
+        // ProcessBuilder with a List<String> (argv array) never invokes a shell, so
+        // userInput cannot inject additional commands regardless of its content.
+        ProcessBuilder pb = new ProcessBuilder(Arrays.asList("ls", userInput));
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
         BufferedReader reader = new BufferedReader(
             new java.io.InputStreamReader(p.getInputStream())
         );
